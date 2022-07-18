@@ -1,46 +1,29 @@
-const { expect } = require("chai");
-const { BigNumber } = require("ethers");
-const { parseEther } = require("ethers/lib/utils");
-const { ethers } = require("hardhat");
+// We require the Hardhat Runtime Environment explicitly here. This is optional
+// but useful for running the script in a standalone fashion through `node <script>`.
+//
+// You can also run a script with `npx hardhat run <script>`. If you do that, Hardhat
+// will compile your contracts, add the Hardhat Runtime Environment's members to the
+// global scope, and execute the script.
+const hre = require("hardhat");
 
-describe("Attack", function () {
-  it("Should empty the balance of the good contract", async function () {
-    // Deploy the good contract
-    const goodContractFactory = await ethers.getContractFactory("GoodContract");
-    const goodContract = await goodContractFactory.deploy();
-    await goodContract.deployed();
+async function main() {
+  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
+  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
+  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
 
-    //Deploy the bad contract
-    const badContractFactory = await ethers.getContractFactory("BadContract");
-    const badContract = await badContractFactory.deploy(goodContract.address);
-    await badContract.deployed();
+  const lockedAmount = hre.ethers.utils.parseEther("1");
 
-    // Get two addresses, treat one as innocent user and one as attacker
-    const [_, innocentAddress, attackerAddress] = await ethers.getSigners();
+  const Lock = await hre.ethers.getContractFactory("Lock");
+  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
 
-    // Innocent User deposits 10 ETH into GoodContract
-    let tx = await goodContract.connect(innocentAddress).addBalance({
-      value: parseEther("10"),
-    });
-    await tx.wait();
+  await lock.deployed();
 
-    // Check that at this point the GoodContract's balance is 10 ETH
-    let balanceETH = await ethers.provider.getBalance(goodContract.address);
-    expect(balanceETH).to.equal(parseEther("10"));
+  console.log("Lock with 1 ETH deployed to:", lock.address);
+}
 
-    // Attacker calls the `attack` function on BadContract
-    // and sends 1 ETH
-    tx = await badContract.connect(attackerAddress).attack({
-      value: parseEther("1"),
-    });
-    await tx.wait();
-
-    // Balance of the GoodContract's address is now zero
-    balanceETH = await ethers.provider.getBalance(goodContract.address);
-    expect(balanceETH).to.equal(BigNumber.from("0"));
-
-    // Balance of BadContract is now 11 ETH (10 ETH stolen + 1 ETH from attacker)
-    balanceETH = await ethers.provider.getBalance(badContract.address);
-    expect(balanceETH).to.equal(parseEther("11"));
-  });
+// We recommend this pattern to be able to use async/await everywhere
+// and properly handle errors.
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });
